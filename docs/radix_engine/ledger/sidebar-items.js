@@ -1,0 +1,1 @@
+initSidebarItems({"fn":[["bootstrap",""]],"struct":[["OutputId",""],["OutputValue",""],["TypedInMemorySubstateStore","A substate store that stores all typed substates in host memory."]],"trait":[["QueryableSubstateStore",""],["ReadableSubstateStore",""],["SubstateStore",""],["WriteableSubstateStore",""]]});

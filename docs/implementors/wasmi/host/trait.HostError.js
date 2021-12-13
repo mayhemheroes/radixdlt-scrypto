@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["radix_engine"] = [{"text":"impl HostError for <a class=\"enum\" href=\"radix_engine/wasm/enum.WasmInvokeError.html\" title=\"enum radix_engine::wasm::WasmInvokeError\">WasmInvokeError</a>","synthetic":false,"types":["radix_engine::wasm::errors::WasmInvokeError"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["FeeReserveError",""],["SystemApiCostingEntry",""]],"struct":[["FeeSummary",""],["FeeTable",""],["SystemLoanFeeReserve",""],["UnlimitedLoanFeeReserve",""]],"trait":[["FeeReserve",""]]});
