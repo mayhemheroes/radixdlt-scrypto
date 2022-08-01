@@ -14,7 +14,7 @@ use transaction::model::*;
 use crate::engine::RuntimeError;
 use crate::state_manager::StateDiff;
 
-#[derive(Debug)]
+#[derive(Debug, Encode, Decode)]
 pub struct TransactionFeeSummary {
     /// The specified max cost units can be consumed.
     pub cost_unit_limit: u32,
