@@ -967,73 +967,27 @@ where
 
         // Get location
         // Note this must be run AFTER values are taken, otherwise there would be inconsistent readable_values state
-        let (value_info, address_borrowed) = self
+        let node_info = self
             .node_refs
             .get(&node_id)
             .cloned()
-            .map(|v| (v, None))
-            .or_else(|| {
-                // Allow global read access to any component info
-                if let SubstateId::ComponentInfo(component_address, ..) = substate_id {
-                    if self.owned_heap_nodes.contains_key(&node_id) {
-                        return Some((
-                            RENodeInfo {
-                                location: RENodePointer::Stack {
-                                    frame_id: Option::None,
-                                    root: node_id.clone(),
-                                    id: Option::None,
-                                },
-                                visible: true,
-                            },
-                            None,
-                        ));
-                    } else if self
-                        .track
-                        .acquire_lock(
-                            SubstateId::ComponentInfo(*component_address, true),
-                            false,
-                            false,
-                        )
-                        .is_ok()
-                    {
-                        return Some((
-                            RENodeInfo {
-                                location: RENodePointer::Track(SubstateId::ComponentInfo(
-                                    *component_address,
-                                    true,
-                                )),
-                                visible: true,
-                            },
-                            Some(component_address),
-                        ));
-                    }
-                }
-
-                None
-            })
             .ok_or_else(|| RuntimeError::InvalidDataAccess(node_id))?;
-        if !value_info.visible {
+        if !node_info.visible {
             return Err(RuntimeError::InvalidDataAccess(node_id));
         }
-        let location = &value_info.location;
+        let node_pointer = &node_info.location;
 
         // Read current value
         let current_value = {
-            let value_ref = location.to_ref_mut(
+            let node_ref = node_pointer.to_ref_mut(
                 &mut self.owned_heap_nodes,
                 &mut self.parent_heap_nodes,
                 &mut self.track,
             );
-            substate_id.read_scrypto_value(value_ref)?
+            substate_id.read_scrypto_value(node_ref)?
         };
 
-        // TODO: Remove, currently a hack to allow for global component info retrieval
-        if let Some(component_address) = address_borrowed {
-            self.track
-                .release_lock(SubstateId::ComponentInfo(*component_address, true), false);
-        }
-
-        Ok((location.clone(), current_value))
+        Ok((node_pointer.clone(), current_value))
     }
 
     /// Creates a new package ID.
@@ -1182,6 +1136,7 @@ where
                     .owned_heap_nodes
                     .remove(node_id)
                     .ok_or(RuntimeError::RENodeNotFound(*node_id))?;
+                self.node_refs.remove(node_id);
 
                 let method_auths = match &value.root() {
                     RENode::Bucket(bucket) => {
@@ -2060,29 +2015,23 @@ where
             }
         };
         self.owned_heap_nodes.insert(id, re_value);
-
-        match id {
-            RENodeId::KeyValueStore(..) | RENodeId::Resource(..) => {
-                self.node_refs.insert(
-                    id.clone(),
-                    RENodeInfo {
-                        location: RENodePointer::Stack {
-                            frame_id: None,
-                            root: id.clone(),
-                            id: None,
-                        },
-                        visible: true,
-                    },
-                );
-            }
-            _ => {}
-        }
+        self.node_refs.insert(
+            id.clone(),
+            RENodeInfo {
+                location: RENodePointer::Stack {
+                    frame_id: None,
+                    root: id.clone(),
+                    id: None,
+                },
+                visible: true,
+            },
+        );
 
         Ok(id)
     }
 
     fn globalize_node(&mut self, node_id: &RENodeId) -> Result<(), CostUnitCounterError> {
-        trace!(self, Level::Debug, "Globalizing value: {:?}", node_id);
+        trace!(self, Level::Debug, "Globalizing node: {:?}", node_id);
 
         self.cost_unit_counter.consume(
             self.fee_table
