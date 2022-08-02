@@ -14,6 +14,7 @@ use scrypto::core::{SNodeRef, ScryptoActor};
 use scrypto::engine::types::*;
 use scrypto::resource::AuthZoneClearInput;
 use scrypto::values::*;
+use transaction::model::ExecutableInstruction;
 use transaction::validation::*;
 
 use crate::engine::*;
@@ -1405,12 +1406,13 @@ where
                     } else if let Some(RENodeInfo { location, .. }) = self.node_refs.get(&node_id) {
                         location.clone()
                     } else {
-                        RENodePointer::Track(SubstateId::ComponentInfo(component_address, true))
+                        return Err(RuntimeError::NotSupported);
                     };
 
                     // Lock values and setup next frame
                     let (next_location, is_global) = match cur_location.clone() {
                         RENodePointer::Track(substate_id) => {
+                            /*
                             self.track
                                 .acquire_lock(substate_id.clone(), true, false)
                                 .map_err(|e| match e {
@@ -1443,6 +1445,7 @@ where
                                     }
                                 })?;
                             locked_values.insert(component_state_address);
+                             */
 
                             let is_global =
                                 if let SubstateId::ComponentInfo(_component_address, is_global) =
@@ -1691,6 +1694,77 @@ where
                 Ok((SNodeExecution::RENodeRef(node_id), vec![method_auth]))
             }
         }?;
+
+        // Move this into transaction processor
+        if self.depth == 0 {
+            let mut component_addresses = HashSet::new();
+
+            // Collect component addresses
+            for component_address in &input.refed_component_addresses {
+                component_addresses.insert(*component_address);
+            }
+            let input: TransactionProcessorRunInput = scrypto_decode(&input.raw).unwrap();
+            for instruction in &input.instructions {
+                match instruction {
+                    ExecutableInstruction::CallFunction { arg, .. }
+                    | ExecutableInstruction::CallMethod { arg, .. } => {
+                        let scrypto_value = ScryptoValue::from_slice(&arg).unwrap();
+                        component_addresses.extend(scrypto_value.refed_component_addresses);
+                    }
+                    _ => {}
+                }
+            }
+
+            // Lock components
+            for addr in component_addresses {
+                let node_id = RENodeId::Component(addr.clone());
+                let substate_id = SubstateId::ComponentInfo(addr.clone(), true);
+                self.track
+                    .acquire_lock(substate_id.clone(), true, false)
+                    .map_err(|e| match e {
+                        TrackError::NotFound => {
+                            RuntimeError::ComponentNotFound(addr.clone())
+                        }
+                        TrackError::Reentrancy => {
+                            RuntimeError::ComponentReentrancy(addr.clone())
+                        }
+                        TrackError::StateTrackError(e) => {
+                            RuntimeError::PayFeeError(match e {
+                                StateTrackError::RENodeAlreadyTouched => {
+                                    PayFeeError::RENodeAlreadyTouched
+                                }
+                            })
+                        }
+                    })?;
+                locked_values.insert(substate_id.clone());
+                value_refs.insert(
+                    node_id,
+                    RENodeInfo {
+                        location: RENodePointer::Track(substate_id),
+                        visible: true,
+                    },
+                );
+
+                let substate_id = SubstateId::ComponentState(addr);
+                self.track
+                    .acquire_lock(substate_id.clone(), true, false)
+                    .expect("Should not get here.");
+                locked_values.insert(substate_id.clone());
+            }
+        } else {
+            for component_address in &input.refed_component_addresses {
+                let node_id = RENodeId::Component(*component_address);
+                let substate_id = SubstateId::ComponentInfo(*component_address, true);
+                // TODO: Check in list of references
+                value_refs.insert(
+                    node_id,
+                    RENodeInfo {
+                        location: RENodePointer::Track(substate_id),
+                        visible: true,
+                    },
+                );
+            }
+        }
 
         // Authorization check
         if !method_auths.is_empty() {
