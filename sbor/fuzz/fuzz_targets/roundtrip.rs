@@ -9,9 +9,9 @@ fuzz_target!(|data: &[u8]| {
 fn fuzz(data: &[u8]) -> Result<(), ()> {
     let value = decode_any(data).map_err(|_| ())?;
 
-    let mut bytes = Vec::new();
-    let mut encoder = Encoder::with_type(&mut bytes);
-    encode_any(None, &value, &mut encoder);
+    //let mut bytes = Vec::new();
+    //let mut encoder = Encoder::with_type_id(&mut bytes);
+    encode_any(&value);
 
     let value2 = decode_any(&bytes).expect("encoded bytes to deserialize");
     assert_eq!(value, value2, "roundtrip failure");
